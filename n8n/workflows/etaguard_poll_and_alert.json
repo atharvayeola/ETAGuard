@@ -1,0 +1,359 @@
+{
+  "name": "ETAguard — Poll & Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": [
+          {
+            "item": "minutes",
+            "mode": "everyX",
+            "value": 10
+          }
+        ]
+      },
+      "id": "Cron",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env(\"SERVICE_URL\") }}/deliveries",
+        "options": {
+          "fullResponse": true,
+          "timeout": 10,
+          "retry": 3
+        }
+      },
+      "id": "HTTP Request",
+      "name": "HTTP Request: Fetch Deliveries",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -300,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const deliveries = $json.deliveries || [];\nreturn deliveries.map(delivery => ({ json: delivery }));"
+      },
+      "id": "SplitDeliveries",
+      "name": "Function: Split Deliveries",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const d = $json;\nconst promised = new Date(d.promised_eta).getTime();\nconst actual = d.actual_eta ? new Date(d.actual_eta).getTime() : null;\nlet latenessMin = null;\nif (actual) {\n  latenessMin = Math.round((actual - promised) / 60000);\n}\nconst now = Date.now();\nconst deliveredLate = d.status === 'delivered' && latenessMin !== null && latenessMin > 30;\nconst enrouteBreach = d.status === 'enroute' && now > promised;\nreturn [{ json: { ...d, lateness_min: latenessMin, delivered_late: deliveredLate, enroute_breach: enrouteBreach } }];"
+      },
+      "id": "ComputeLateness",
+      "name": "Function: Compute Lateness",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        120,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO deliveries (order_id, yard_id, route_id, promised_eta, actual_eta, status, last_seen)\nVALUES ($1,$2,$3,$4,$5,$6,NOW())\nON CONFLICT (order_id) DO UPDATE SET\n  yard_id=EXCLUDED.yard_id,\n  route_id=EXCLUDED.route_id,\n  promised_eta=EXCLUDED.promised_eta,\n  actual_eta=EXCLUDED.actual_eta,\n  status=EXCLUDED.status,\n  last_seen=NOW();",
+        "additionalFields": {
+          "values": [
+            {
+              "value": "={{$json.order_id}}"
+            },
+            {
+              "value": "={{$json.yard_id}}"
+            },
+            {
+              "value": "={{$json.route_id}}"
+            },
+            {
+              "value": "={{$json.promised_eta}}"
+            },
+            {
+              "value": "={{$json.actual_eta}}"
+            },
+            {
+              "value": "={{$json.status}}"
+            }
+          ]
+        }
+      },
+      "id": "UpsertDelivery",
+      "name": "Postgres: Upsert Delivery",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        340,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.delivered_late}}"
+            }
+          ]
+        }
+      },
+      "id": "DeliveredLate",
+      "name": "IF: Delivered & Late?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        560,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "channel": "={{$env(\"SLACK_SLA_CHANNEL\")}}",
+        "text": ":alarm_clock: Late delivery\\nOrder {{$json.order_id}} (yard {{$json.yard_id}}, route {{$json.route_id || 'n/a'}})\\nPromised: {{$json.promised_eta}}  Actual: {{$json.actual_eta}}\\nLateness: {{$json.lateness_min}} min"
+      },
+      "id": "SlackLate",
+      "name": "Slack: Post Late Delivery Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [
+        800,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO alerts (order_id, yard_id, route_id, lateness_min, threshold_min, reason)\nVALUES ($1,$2,$3,$4,$5,$6);",
+        "additionalFields": {
+          "values": [
+            {
+              "value": "={{$json.order_id}}"
+            },
+            {
+              "value": "={{$json.yard_id}}"
+            },
+            {
+              "value": "={{$json.route_id}}"
+            },
+            {
+              "value": "={{$json.lateness_min}}"
+            },
+            {
+              "value": "=30"
+            },
+            {
+              "value": "=Delivered late"
+            }
+          ]
+        }
+      },
+      "id": "InsertLateAlert",
+      "name": "Postgres: Insert Late Alert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.enroute_breach}}"
+            }
+          ]
+        }
+      },
+      "id": "InFlightBreach",
+      "name": "IF: In-Flight ETA Breach?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "channel": "={{$env(\"SLACK_SLA_CHANNEL\")}}",
+        "text": ":warning: ETA breach risk\\nOrder {{$json.order_id}} (yard {{$json.yard_id}}, route {{$json.route_id || 'n/a'}})\\nPromised ETA {{$json.promised_eta}} has passed while status is {{$json.status}}."
+      },
+      "id": "SlackInFlight",
+      "name": "Slack: Post In-Flight Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO alerts (order_id, yard_id, route_id, lateness_min, threshold_min, reason)\nVALUES ($1,$2,$3,$4,$5,$6);",
+        "additionalFields": {
+          "values": [
+            {
+              "value": "={{$json.order_id}}"
+            },
+            {
+              "value": "={{$json.yard_id}}"
+            },
+            {
+              "value": "={{$json.route_id}}"
+            },
+            {
+              "value": "={{$json.lateness_min}}"
+            },
+            {
+              "value": "=0"
+            },
+            {
+              "value": "=ETA breach in-flight"
+            }
+          ]
+        }
+      },
+      "id": "InsertInFlightAlert",
+      "name": "Postgres: Insert In-Flight Alert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request: Fetch Deliveries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request: Fetch Deliveries": {
+      "main": [
+        [
+          {
+            "node": "Function: Split Deliveries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Split Deliveries": {
+      "main": [
+        [
+          {
+            "node": "Function: Compute Lateness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Compute Lateness": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Upsert Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: Upsert Delivery": {
+      "main": [
+        [
+          {
+            "node": "IF: Delivered & Late?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Delivered & Late?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Post Late Delivery Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF: In-Flight ETA Breach?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Post Late Delivery Alert": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Insert Late Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: In-Flight ETA Breach?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Post In-Flight Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Post In-Flight Alert": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Insert In-Flight Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataErrorExecution": "all",
+    "timezone": "America/Los_Angeles"
+  },
+  "staticData": null,
+  "pinData": {},
+  "id": "1",
+  "versionId": "c5b9c2a1-1820-4c90-9bf9-9b58f2ea6b3c"
+}
