@@ -27,6 +27,10 @@ etaguard/
       train_text_triage.py
       data/
         delivery_notes.sample.csv
+    client.py
+    schemas.py
+    requirements.txt
+    Dockerfile
   n8n/
     workflows/
       etaguard_poll_and_alert.json
@@ -91,6 +95,8 @@ etaguard/
 
   The script will emit a `service/model_store/text_triage.pkl` artifact used by the API.
 * n8n workflow “ETAguard — Poll & Alert” calls the endpoint for deliveries that include a note, stores the result in the `delay_causes` table, and enriches Slack alerts with `Cause (ML): <label> (<confidence>%)`.
+
+   * A daily summary posted at 07:30 America/Los_Angeles.
 
 ## Development notes
 

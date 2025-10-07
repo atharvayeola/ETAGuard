@@ -1,5 +1,6 @@
 {
   "name": "ETAguard \u2014 Poll & Alert",
+  "name": "ETAguard — Poll & Alert",
   "nodes": [
     {
       "parameters": {
@@ -124,6 +125,7 @@
       "parameters": {
         "channel": "={{$env(\"SLACK_SLA_CHANNEL\")}}",
         "text": ":alarm_clock: Late delivery\\nOrder {{$json.order_id}} (yard {{$json.yard_id}}, route {{$json.route_id || 'n/a'}})\\nPromised: {{$json.promised_eta}}  Actual: {{$json.actual_eta}}\\nLateness: {{$json.lateness_min}} min\\n{{$json.label ? 'Cause (ML): ' + $json.label + ' (' + Math.round((($json.confidence || 0) * 100)) + '%)' : ''}}"
+        "text": ":alarm_clock: Late delivery\\nOrder {{$json.order_id}} (yard {{$json.yard_id}}, route {{$json.route_id || 'n/a'}})\\nPromised: {{$json.promised_eta}}  Actual: {{$json.actual_eta}}\\nLateness: {{$json.lateness_min}} min"
       },
       "id": "SlackLate",
       "name": "Slack: Post Late Delivery Alert",
@@ -365,6 +367,7 @@
         [
           {
             "node": "IF: Has Note?",
+            "node": "Postgres: Upsert Delivery",
             "type": "main",
             "index": 0
           }
