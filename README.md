@@ -1,6 +1,6 @@
 # ETAguard
 
-ETAguard monitors deliveries, tracks promised versus actual ETAs, and surfaces SLA breaches using n8n automations, PostgreSQL, and an optional FastAPI proxy.
+ETAguard monitors BLDR deliveries, tracks promised versus actual ETAs, and surfaces SLA breaches using n8n automations, PostgreSQL, and an optional FastAPI proxy.
 
 ## Repository layout
 
