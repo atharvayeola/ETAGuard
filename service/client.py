@@ -37,6 +37,7 @@ async def fetch_raw_async() -> List[Dict]:
             "promised_eta": promised.isoformat(),
             "actual_eta": actual.isoformat(),
             "status": "delivered",
+            "note": "Gate was locked; driver waiting for access code.",
         }
     ]
 
@@ -53,6 +54,7 @@ def normalize(raw: List[Dict]) -> List[Dict]:
                 "promised_eta": record["promised_eta"],
                 "actual_eta": record.get("actual_eta"),
                 "status": record["status"].lower(),
+                "note": record.get("note"),
             }
         )
     return deliveries

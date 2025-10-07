@@ -1,4 +1,5 @@
 {
+  "name": "ETAguard \u2014 Poll & Alert",
   "name": "ETAguard — Poll & Alert",
   "nodes": [
     {
@@ -123,6 +124,7 @@
     {
       "parameters": {
         "channel": "={{$env(\"SLACK_SLA_CHANNEL\")}}",
+        "text": ":alarm_clock: Late delivery\\nOrder {{$json.order_id}} (yard {{$json.yard_id}}, route {{$json.route_id || 'n/a'}})\\nPromised: {{$json.promised_eta}}  Actual: {{$json.actual_eta}}\\nLateness: {{$json.lateness_min}} min\\n{{$json.label ? 'Cause (ML): ' + $json.label + ' (' + Math.round((($json.confidence || 0) * 100)) + '%)' : ''}}"
         "text": ":alarm_clock: Late delivery\\nOrder {{$json.order_id}} (yard {{$json.yard_id}}, route {{$json.route_id || 'n/a'}})\\nPromised: {{$json.promised_eta}}  Actual: {{$json.actual_eta}}\\nLateness: {{$json.lateness_min}} min"
       },
       "id": "SlackLate",
@@ -238,6 +240,92 @@
         1240,
         120
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.note && $json.note.length > 0}}"
+            }
+          ]
+        }
+      },
+      "id": "HasNote",
+      "name": "IF: Has Note?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        120,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env(\"SERVICE_URL\") }}/explain_delay",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 10,
+          "retry": 3
+        },
+        "bodyParametersJson": "={{ { 'order_id': $json.order_id, 'note': $json.note } }}"
+      },
+      "id": "ExplainDelay",
+      "name": "HTTP Request: Explain Delay",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        340,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO delay_causes (order_id, label, confidence, model_version, note_excerpt)\\nVALUES ($1,$2,$3,$4,$5);",
+        "additionalFields": {
+          "values": [
+            {
+              "value": "={{$json.order_id}}"
+            },
+            {
+              "value": "={{$json.label}}"
+            },
+            {
+              "value": "={{$json.confidence}}"
+            },
+            {
+              "value": "={{$json.version}}"
+            },
+            {
+              "value": "={{$json.top3[0].label}}"
+            }
+          ]
+        }
+      },
+      "id": "InsertDelayCause",
+      "name": "Postgres: Insert Delay Cause",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        560,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineMode": "mergeByIndex"
+      },
+      "id": "MergeDelayCause",
+      "name": "Merge: Attach Delay Cause",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        560,
+        200
+      ]
     }
   ],
   "connections": {
@@ -278,6 +366,7 @@
       "main": [
         [
           {
+            "node": "IF: Has Note?",
             "node": "Postgres: Upsert Delivery",
             "type": "main",
             "index": 0
@@ -341,6 +430,57 @@
         [
           {
             "node": "Postgres: Insert In-Flight Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Note?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request: Explain Delay",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge: Attach Delay Cause",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres: Upsert Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge: Attach Delay Cause": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Upsert Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "HTTP Request: Explain Delay": {
+      "main": [
+        [
+          {
+            "node": "Merge: Attach Delay Cause",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Postgres: Insert Delay Cause",
             "type": "main",
             "index": 0
           }

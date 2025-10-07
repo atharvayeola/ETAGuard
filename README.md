@@ -10,6 +10,23 @@ etaguard/
     docker-compose.yaml
   service/
     app.py
+    ml_server.py
+    client.py
+    nlp_text_triage.py
+    schemas.py
+    schemas_text.py
+    requirements.txt
+    Dockerfile
+    model_store/
+      text_triage.pkl
+    tests/
+      test_explain_delay.py
+  ml/
+    text/
+      labels.py
+      train_text_triage.py
+      data/
+        delivery_notes.sample.csv
     client.py
     schemas.py
     requirements.txt
@@ -24,6 +41,7 @@ etaguard/
     migrations/
       001_init.sql
       002_indexes.sql
+      004_delay_cause.sql
   README.md
   .env
 ```
@@ -63,6 +81,21 @@ etaguard/
    * A row in `deliveries` for order `B12345`.
    * A Slack alert in `SLACK_SLA_CHANNEL` for the late delivery.
    * A row in `alerts` for the breach.
+   * When the delivery note is present, a Slack alert line with the ML-predicted cause and a `delay_causes` entry.
+   * A daily summary posted at 07:30 America/Los_Angeles.
+
+## Delay note triage (TF-IDF + Logistic Regression)
+
+* The FastAPI service now exposes `POST /explain_delay` which returns a predicted delay label, confidence, model version, and top-3 probabilities for any delivery note.
+* Train or update the lightweight scikit-learn model with:
+
+  ```bash
+  python -m ml.text.train_text_triage --csv ml/text/data/delivery_notes.sample.csv
+  ```
+
+  The script will emit a `service/model_store/text_triage.pkl` artifact used by the API.
+* n8n workflow “ETAguard — Poll & Alert” calls the endpoint for deliveries that include a note, stores the result in the `delay_causes` table, and enriches Slack alerts with `Cause (ML): <label> (<confidence>%)`.
+
    * A daily summary posted at 07:30 America/Los_Angeles.
 
 ## Development notes

@@ -10,6 +10,7 @@ class Delivery(BaseModel):
     promised_eta: datetime
     actual_eta: Optional[datetime] = None
     status: str  # scheduled | enroute | delivered | delayed | canceled
+    note: Optional[str] = None
 
 
 class Deliveries(BaseModel):
