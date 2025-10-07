@@ -1,0 +1,94 @@
+{
+  "name": "ETAguard — Errors",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ErrorTrigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "channel": "={{$env(\"SLACK_SLA_CHANNEL\")}}",
+        "text": ":rotating_light: ETAguard workflow error\\nWorkflow: {{$json.workflow.name}}\\nNode: {{$json.error.node.name}}\\nExecution: {{$json.execution.id}}\\nMessage: {{$json.error.message}}"
+      },
+      "id": "SlackError",
+      "name": "Slack: Notify Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO alerts (order_id, yard_id, route_id, lateness_min, threshold_min, reason)\nVALUES ($1,$2,$3,$4,$5,$6);",
+        "additionalFields": {
+          "values": [
+            {
+              "value": "={{'workflow_error_' + $json.execution.id}}"
+            },
+            {
+              "value": "=\u2014"
+            },
+            {
+              "value": "=\u2014"
+            },
+            {
+              "value": "=0"
+            },
+            {
+              "value": "=0"
+            },
+            {
+              "value": "={{$json.error.message}}"
+            }
+          ]
+        }
+      },
+      "id": "InsertErrorAlert",
+      "name": "Postgres: Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        0,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Slack: Notify Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres: Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataErrorExecution": "all",
+    "timezone": "America/Los_Angeles"
+  },
+  "staticData": null,
+  "pinData": {},
+  "id": "3",
+  "versionId": "34aa0283-4e28-4d0f-8268-1c92fcf58fb6"
+}

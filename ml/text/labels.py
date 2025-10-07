@@ -1,0 +1,12 @@
+LABELS = [
+    "GATE_ACCESS",
+    "WEATHER",
+    "INCORRECT_ADDRESS",
+    "WAITING_ON_CREW",
+    "DAMAGED_GOODS",
+    "MISSING_ITEMS",
+    "VEHICLE_BREAKDOWN",
+    "SITE_CLOSED",
+    "TRAFFIC",
+    "OTHER",
+]
