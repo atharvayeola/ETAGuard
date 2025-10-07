@@ -1,6 +1,6 @@
 # ETAguard
 
-ETAguard monitors BLDR deliveries, tracks promised versus actual ETAs, and surfaces SLA breaches using PostgreSQL, n8n automations, and an optional FastAPI proxy. A lightweight text-triage model adds context by classifying delivery notes and highlighting likely delay causes.
+ETAguard monitors your distributor's deliveries, tracks promised versus actual ETAs, and surfaces SLA breaches using PostgreSQL, n8n automations, and an optional FastAPI proxy. A lightweight text-triage model adds context by classifying delivery notes and highlighting likely delay causes.
 
 ## Table of contents
 
@@ -42,7 +42,7 @@ ETAguard monitors BLDR deliveries, tracks promised versus actual ETAs, and surfa
 ```
 
 The proxy normalizes delivery payloads, n8n orchestrates polling, alerting, and daily summaries, and Slack receives both real-time breach notifications and daily SLA reports. When delivery notes are present, an embedded text-triage model predicts likely delay causes that are persisted for analytics.
-ETAguard monitors BLDR deliveries, tracks promised versus actual ETAs, and surfaces SLA breaches using n8n automations, PostgreSQL, and an optional FastAPI proxy.
+ETAguard monitors your distributor's deliveries, tracks promised versus actual ETAs, and surfaces SLA breaches using n8n automations, PostgreSQL, and an optional FastAPI proxy.
 
 ## Repository layout
 
@@ -94,7 +94,7 @@ Populate the following values before running the stack:
 | `N8N_BASIC_AUTH_*` | Auth guard for the n8n editor UI |
 | `SLACK_BOT_TOKEN`, `SLACK_SLA_CHANNEL` | Slack bot credentials for alerts and summaries |
 | `SERVICE_URL` | Where n8n reaches the proxy (`http://service:8000` inside Docker) |
-| `MYBLDR_AUTH_COOKIE` | Optional cookie/token for upstream delivery data |
+| `DISTRIBUTOR_AUTH_COOKIE` | Optional cookie/token for upstream delivery data |
 
 ## Quick start
 
@@ -147,7 +147,7 @@ Populate the following values before running the stack:
    cp n8n/env.example .env
    ```
 
-   Update secrets like `SLACK_BOT_TOKEN`, `SLACK_SLA_CHANNEL`, and `MYBLDR_AUTH_COOKIE`.
+   Update secrets like `SLACK_BOT_TOKEN`, `SLACK_SLA_CHANNEL`, and `DISTRIBUTOR_AUTH_COOKIE`.
 
 2. **Launch the stack**
 
