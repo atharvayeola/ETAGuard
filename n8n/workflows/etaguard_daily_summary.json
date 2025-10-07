@@ -1,0 +1,182 @@
+{
+  "name": "ETAguard — Daily Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": [
+          {
+            "hour": 7,
+            "minute": 30,
+            "item": "hours"
+          }
+        ]
+      },
+      "id": "DailyCron",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH d AS (\n  SELECT * FROM deliveries\n  WHERE promised_eta::date = (CURRENT_DATE - INTERVAL '1 day')::date\n)\nSELECT \n  d.yard_id,\n  COUNT(*) AS deliveries_total,\n  COUNT(*) FILTER (WHERE COALESCE((EXTRACT(EPOCH FROM (actual_eta - promised_eta))/60)::int,0) <= 0) AS on_time,\n  COUNT(*) FILTER (WHERE (EXTRACT(EPOCH FROM (actual_eta - promised_eta))/60)::int > 15) AS late_15,\n  COUNT(*) FILTER (WHERE (EXTRACT(EPOCH FROM (actual_eta - promised_eta))/60)::int > 30) AS late_30,\n  PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE((EXTRACT(EPOCH FROM (actual_eta - promised_eta))/60)::int,0)) AS p95_lateness_min\nFROM d\nGROUP BY d.yard_id;"
+      },
+      "id": "QuerySLA",
+      "name": "Postgres: Compute Yesterday SLA",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);\nconst dayString = yesterday.toISOString().slice(0, 10);\nif (items.length === 0) {\n  return [{ json: { day: dayString, yard_id: 'ALL', deliveries_total: 0, on_time: 0, late_15: 0, late_30: 0, p95_lateness_min: 0, summary_line: 'No deliveries yesterday.' } }];\n}\nreturn items.map(item => {\n  const stats = item.json;\n  const line = `Yard ${stats.yard_id || 'N/A'} — total ${stats.deliveries_total || 0} | on-time ${stats.on_time || 0} | >15m ${stats.late_15 || 0} | >30m ${stats.late_30 || 0} | p95 ${Math.round(stats.p95_lateness_min || 0)}m`;\n  return { json: { ...stats, day: dayString, summary_line: line } };\n});"
+      },
+      "id": "FormatStats",
+      "name": "Function: Format Stats",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        20,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO sla_history (day, yard_id, deliveries_total, on_time, late_15, late_30, p95_lateness_min)\nVALUES ($1,$2,$3,$4,$5,$6,$7)\nON CONFLICT (day, yard_id) DO UPDATE SET\n  deliveries_total=EXCLUDED.deliveries_total,\n  on_time=EXCLUDED.on_time,\n  late_15=EXCLUDED.late_15,\n  late_30=EXCLUDED.late_30,\n  p95_lateness_min=EXCLUDED.p95_lateness_min;",
+        "additionalFields": {
+          "values": [
+            {
+              "value": "={{$json.day}}"
+            },
+            {
+              "value": "={{$json.yard_id}}"
+            },
+            {
+              "value": "={{$json.deliveries_total}}"
+            },
+            {
+              "value": "={{$json.on_time}}"
+            },
+            {
+              "value": "={{$json.late_15}}"
+            },
+            {
+              "value": "={{$json.late_30}}"
+            },
+            {
+              "value": "={{Math.round($json.p95_lateness_min || 0)}}"
+            }
+          ]
+        }
+      },
+      "id": "UpsertSLAHistory",
+      "name": "Postgres: Upsert SLA History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        260,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const summaryDate = new Date().toISOString().slice(0, 10);\nconst lines = items.map(item => item.json.summary_line);\nlet text = `*ETAguard Daily (${summaryDate})*`;\nif (lines.length > 0) {\n  text += '\\n' + lines.join('\\n');\n} else {\n  text += '\\nNo deliveries yesterday.';\n}\nreturn [{ json: { text } }];"
+      },
+      "id": "BuildMessage",
+      "name": "Function: Build Slack Message",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        500,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "channel": "={{$env(\"SLACK_SLA_CHANNEL\")}}",
+        "text": "={{$json.text}}"
+      },
+      "id": "SlackSummary",
+      "name": "Slack: Post Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [
+        740,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Compute Yesterday SLA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: Compute Yesterday SLA": {
+      "main": [
+        [
+          {
+            "node": "Function: Format Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Format Stats": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Upsert SLA History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: Upsert SLA History": {
+      "main": [
+        [
+          {
+            "node": "Function: Build Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Build Slack Message": {
+      "main": [
+        [
+          {
+            "node": "Slack: Post Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataErrorExecution": "all",
+    "timezone": "America/Los_Angeles"
+  },
+  "staticData": null,
+  "pinData": {},
+  "id": "2",
+  "versionId": "7d5f2975-8df2-49ac-9856-1df9f51a8c31"
+}

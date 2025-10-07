@@ -1,0 +1,6 @@
+order_id,note,label
+B1001,"Gate was locked; driver waiting for code",GATE_ACCESS
+B1002,"Severe rain slowed route",WEATHER
+B1003,"Incorrect street number; had to circle",INCORRECT_ADDRESS
+B1004,"Crew not on site at scheduled time",WAITING_ON_CREW
+B1005,"Pallet damaged during handling",DAMAGED_GOODS
